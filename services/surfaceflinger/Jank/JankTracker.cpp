@@ -17,6 +17,7 @@
 #include "JankTracker.h"
 
 #include <android/gui/IJankListener.h>
+#include <gui/JankInfo.h>
 #include "BackgroundExecutor.h"
 
 namespace android {
@@ -81,7 +82,14 @@ void JankTracker::onJankData(int32_t layerId, gui::JankData data) {
                 size_t count = tracker.mJankData.count(layerId);
                 tracker.mJankDataLock.unlock();
 
-                if (count >= kJankDataBatchSize && !sCollectAllJankDataForTesting) {
+                // A buffer stuffing verdict is only useful to the client while the animation
+                // that caused it is still running: Choreographer arms buffer stuffing recovery
+                // from it.  Batching it with up to 50 frames delivers it hundreds of
+                // milliseconds late, so flush right away for those frames.
+                const bool stuffing =
+                        (data.jankTypeLegacy | data.jankTypeExperimental) &
+                        (JankType::BufferStuffing | JankType::SurfaceFlingerStuffing);
+                if ((count >= kJankDataBatchSize || stuffing) && !sCollectAllJankDataForTesting) {
                     tracker.doFlushJankData(layerId);
                 }
             }});
