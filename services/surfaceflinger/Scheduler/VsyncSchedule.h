@@ -136,7 +136,7 @@ private:
     static DispatchPtr createDispatch(TrackerPtr);
     static ControllerPtr createController(PhysicalDisplayId, VsyncTracker&, FeatureFlags);
 
-    void enableHardwareVsyncLocked() REQUIRES(mHwVsyncLock);
+    void enableHardwareVsyncLocked(bool resetModel) REQUIRES(mHwVsyncLock);
 
     mutable std::mutex mHwVsyncLock;
     enum class HwVsyncState {

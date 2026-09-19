@@ -161,8 +161,13 @@ VsyncSchedule::ControllerPtr VsyncSchedule::createController(PhysicalDisplayId i
 
 void VsyncSchedule::onDisplayModeChanged(ftl::NonNull<DisplayModePtr> modePtr, bool force) {
     std::lock_guard<std::mutex> lock(mHwVsyncLock);
+    // Only throw away the predictor model for an actual mode change or a forced recalibration.
+    // Hardware vsync is routinely disabled while the display is idle and re-enabled on the next
+    // frame, and on the same mode the model is still valid. Resetting it there makes the first
+    // frames after vsync resumes predict late.
+    const bool resetModel = force || !mTracker->isCurrentMode(modePtr);
     mController->onDisplayModeChanged(modePtr, force);
-    enableHardwareVsyncLocked();
+    enableHardwareVsyncLocked(resetModel);
 }
 
 bool VsyncSchedule::addResyncSample(TimePoint timestamp, ftl::Optional<Period> hwcVsyncPeriod,
@@ -188,13 +193,17 @@ bool VsyncSchedule::addResyncSample(TimePoint timestamp, ftl::Optional<Period> h
 
 void VsyncSchedule::enableHardwareVsync() {
     std::lock_guard<std::mutex> lock(mHwVsyncLock);
-    enableHardwareVsyncLocked();
+    // Hardware vsync is being re-enabled after being disabled, typically because the display was
+    // idle. The display mode has not changed, so keep the calibrated predictor model.
+    enableHardwareVsyncLocked(false /* resetModel */);
 }
 
-void VsyncSchedule::enableHardwareVsyncLocked() {
+void VsyncSchedule::enableHardwareVsyncLocked(bool resetModel) {
     SFTRACE_CALL();
     if (mHwVsyncState == HwVsyncState::Disabled) {
-        mController->resetModel();
+        if (resetModel) {
+            mController->resetModel();
+        }
         mRequestHardwareVsync(mId, true);
         mHwVsyncState = HwVsyncState::Enabled;
     }
